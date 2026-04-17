@@ -103,6 +103,7 @@ with col3:
     
     if selected_shipto != st.session_state["selected_shipto"]:
         st.session_state["selected_shipto"] = selected_shipto
+        st.session_state["selected_armada"] = None
 
 if not selected_company or not selected_cust_name or not selected_shipto:
     st.info("Pilih pelanggan terlebih dahulu.")
@@ -128,8 +129,8 @@ except ValueError:
 
 av_armadas = df_armada[df_armada['Jenis_Armada'].isin(allowed_armadas)]['Jenis_Armada'].tolist()
 
-idx_armada = 0
-if st.session_state["selected_armada"] in av_armadas:
+idx_armada = len(av_armadas) - 1 if av_armadas else 0
+if st.session_state.get("selected_armada") in av_armadas:
     idx_armada = av_armadas.index(st.session_state["selected_armada"])
 
 selected_armada = st.selectbox("Pilih Jenis Armada", options=av_armadas, index=idx_armada if av_armadas else 0)
