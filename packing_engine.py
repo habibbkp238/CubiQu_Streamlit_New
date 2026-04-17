@@ -32,21 +32,24 @@ def run_3d_packing(items, armada_specs, timeout=PACKING_TIMEOUT_SECONDS):
         qty = int(item['Qty'])
         total_qty += qty
         
-        # Optimization: Grouping identical items into bundles for faster computation
-        group_size = 1
-        if qty > 40:
-            group_size = 10
-        elif qty > 10:
-            group_size = 5
-            
-        # Ensure the bundled length doesn't exceed the bin length
+    total_qty = 0
+    for item in items:
+        qty = int(item['Qty'])
+        total_qty += qty
+        
+        # Aggressive Optimization: Always target ~15-20 virtual blocks per SKU
+        # This keeps the total number of items handled by py3dbp small and fast.
+        group_size = max(1, qty // 15)
+        
+        # Ensure the bundled length doesn't exceed the bin length or width
+        # We group along the longest dimension of the item to be efficient
         if (item['Length'] * group_size) > bin_l:
-            group_size = 1 # Fallback to 1 if bundle is too big
+            group_size = 1
             
         num_groups = qty // group_size
         remainder = qty % group_size
         
-        # Add Bundles
+        # Add Bundled blocks (as single items to the packer)
         for i in range(num_groups):
             packer.add_item(Item(
                 f"{item['Item_Name']}_G{i}", 
@@ -56,7 +59,7 @@ def run_3d_packing(items, armada_specs, timeout=PACKING_TIMEOUT_SECONDS):
                 float(item['Weight'] * group_size)
             ))
             
-        # Add Remainders
+        # Add Remainders (individual boxes)
         for i in range(remainder):
             packer.add_item(Item(
                 f"{item['Item_Name']}_R{i}", 
