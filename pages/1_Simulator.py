@@ -121,13 +121,20 @@ st.success(f"**Cust ID**: {cust_info['Cust_ID']} | **Max Armada**: {max_armada}"
 st.header("2. Pilih Jenis Armada")
 
 # Filter armada based on Max_Armada
+max_armada_clean = str(max_armada).strip()
 try:
-    max_idx = ARMADA_ORDER.index(max_armada)
-    allowed_armadas = ARMADA_ORDER[:max_idx+1]
+    # Robust comparison (case-insensitive & strip)
+    order_clean = [x.strip().lower() for x in ARMADA_ORDER]
+    max_idx = order_clean.index(max_armada_clean.lower())
+    allowed_list_clean = order_clean[:max_idx+1]
+    
+    # Filter dataframe using the cleaned lowercase list
+    av_armadas = df_armada[
+        df_armada['Jenis_Armada'].str.strip().str.lower().isin(allowed_list_clean)
+    ]['Jenis_Armada'].tolist()
 except ValueError:
-    allowed_armadas = ARMADA_ORDER
-
-av_armadas = df_armada[df_armada['Jenis_Armada'].isin(allowed_armadas)]['Jenis_Armada'].tolist()
+    # Fallback jika tidak ditemukan di config
+    av_armadas = df_armada['Jenis_Armada'].tolist()
 
 idx_armada = len(av_armadas) - 1 if av_armadas else 0
 if st.session_state.get("selected_armada") in av_armadas:
