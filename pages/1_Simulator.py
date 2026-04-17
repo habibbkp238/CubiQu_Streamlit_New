@@ -121,20 +121,26 @@ st.success(f"**Cust ID**: {cust_info['Cust_ID']} | **Max Armada**: {max_armada}"
 st.header("2. Pilih Jenis Armada")
 
 # Filter armada based on Max_Armada
-max_armada_clean = str(max_armada).strip()
-try:
-    # Robust comparison (case-insensitive & strip)
-    order_clean = [x.strip().lower() for x in ARMADA_ORDER]
-    max_idx = order_clean.index(max_armada_clean.lower())
-    allowed_list_clean = order_clean[:max_idx+1]
-    
-    # Filter dataframe using the cleaned lowercase list
-    av_armadas = df_armada[
-        df_armada['Jenis_Armada'].str.strip().str.lower().isin(allowed_list_clean)
-    ]['Jenis_Armada'].tolist()
-except ValueError:
-    # Fallback jika tidak ditemukan di config
-    av_armadas = df_armada['Jenis_Armada'].tolist()
+max_armada_clean = str(max_armada).strip().upper()
+
+if max_armada_clean == "CONTAINER 20":
+    # Aturan Khusus: Hanya CONTAINER 20 yang boleh dipilih
+    allowed_list_clean = ["container 20"]
+else:
+    # Aturan Standar: Sesuai urutan di config, tapi sembunyikan CONTAINER 20
+    try:
+        order_clean = [x.strip().lower() for x in ARMADA_ORDER]
+        # Pastikan CONTAINER 20 tidak mengandalkan index config jika bukan armada standar
+        max_idx = order_clean.index(max_armada_clean.lower())
+        allowed_list_clean = [x for x in order_clean[:max_idx+1] if x != "container 20"]
+    except ValueError:
+        # Jika Max Armada tidak ditemukan di config utama
+        allowed_list_clean = [x.strip().lower() for x in ARMADA_ORDER if x.strip().lower() != "container 20"]
+
+# Filter dataframe menggunakan list yang sudah disaring
+av_armadas = df_armada[
+    df_armada['Jenis_Armada'].str.strip().str.lower().isin(allowed_list_clean)
+]['Jenis_Armada'].tolist()
 
 idx_armada = len(av_armadas) - 1 if av_armadas else 0
 if st.session_state.get("selected_armada") in av_armadas:
