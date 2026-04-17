@@ -11,7 +11,7 @@ from utils.gsheets_utils import append_report_log
 from utils.packing_engine import run_3d_packing, draw_2d_floor_plan, draw_3d_packing_bin
 from utils.recommendation import get_recommendations
 from utils.report_generator import generate_excel_report, generate_download_template
-from config import ARMADA_ORDER
+
 
 st.set_page_config(page_title="Simulator Muat Armada", page_icon="🚛", layout="wide")
 
@@ -120,27 +120,28 @@ st.success(f"**Cust ID**: {cust_info['Cust_ID']} | **Max Armada**: {max_armada}"
 # --- STEP 2: ARMADA SELECTION ---
 st.header("2. Pilih Jenis Armada")
 
-# Filter armada based on Max_Armada
-max_armada_clean = str(max_armada).strip().upper()
+# Tentukan urutan hirarki secara dinamis berdasarkan Volume (m3) dari Master Data
+df_armada_sorted = df_armada.sort_values('Max_Volume_m3').copy()
+dynamic_order = df_armada_sorted['Jenis_Armada'].tolist()
+dynamic_order_clean = [x.strip().lower() for x in dynamic_order]
 
-if max_armada_clean == "CONTAINER 20":
-    # Aturan Khusus: Hanya CONTAINER 20 yang boleh dipilih
+max_armada_clean = str(max_armada).strip().lower()
+
+if max_armada_clean == "container 20":
+    # Aturan Khusus: Hanya CONTAINER 20
     allowed_list_clean = ["container 20"]
 else:
-    # Aturan Standar: Sesuai urutan di config, tapi sembunyikan CONTAINER 20
+    # Aturan Standar: Ikuti hirarki volume, tapi sembunyikan CONTAINER 20
     try:
-        order_clean = [x.strip().lower() for x in ARMADA_ORDER]
-        # Pastikan CONTAINER 20 tidak mengandalkan index config jika bukan armada standar
-        max_idx = order_clean.index(max_armada_clean.lower())
-        allowed_list_clean = [x for x in order_clean[:max_idx+1] if x != "container 20"]
+        max_idx = dynamic_order_clean.index(max_armada_clean)
+        # Ambil semua yang volumenya <= Max_Armada, buang Container 20
+        allowed_list_clean = [x for x in dynamic_order_clean[:max_idx+1] if x != "container 20"]
     except ValueError:
-        # Jika Max Armada tidak ditemukan di config utama
-        allowed_list_clean = [x.strip().lower() for x in ARMADA_ORDER if x.strip().lower() != "container 20"]
+        # Fallback jika Max_Armada tidak ada di tabel Master Armada
+        allowed_list_clean = [x for x in dynamic_order_clean if x != "container 20"]
 
-# Filter dataframe menggunakan list yang sudah disaring
-av_armadas = df_armada[
-    df_armada['Jenis_Armada'].str.strip().str.lower().isin(allowed_list_clean)
-]['Jenis_Armada'].tolist()
+# Filter daftar armada yang tersedia dari dataframe asli (mengikuti urutan volume)
+av_armadas = [name for name in dynamic_order if name.strip().lower() in allowed_list_clean]
 
 idx_armada = len(av_armadas) - 1 if av_armadas else 0
 if st.session_state.get("selected_armada") in av_armadas:
