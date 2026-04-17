@@ -1,0 +1,10 @@
+streamlit
+pandas
+openpyxl
+requests
+py3dbp
+plotly
+streamlit-aggrid
+gspread
+oauth2client
+Pillow
