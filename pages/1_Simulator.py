@@ -93,7 +93,7 @@ with col2:
 
 with col3:
     shipto_by_cust = cust_by_comp[cust_by_comp['Cust_Name'] == selected_cust_name]
-    shiptos = shipto_by_cust['Ship_to_Name'].unique().tolist()
+    shiptos = shipto_by_cust['Ship_To_Location'].unique().tolist()
     
     idx_shipto = 0
     if st.session_state["selected_shipto"] in shiptos:
@@ -110,7 +110,7 @@ if not selected_company or not selected_cust_name or not selected_shipto:
     st.stop()
 
 # Get customer info
-cust_info = shipto_by_cust[shipto_by_cust['Ship_to_Name'] == selected_shipto].iloc[0]
+cust_info = shipto_by_cust[shipto_by_cust['Ship_To_Location'] == selected_shipto].iloc[0]
 st.session_state["selected_cust_id"] = cust_info['Cust_ID']
 max_armada = cust_info['Max_Armada']
 
@@ -255,23 +255,29 @@ if enriched_items:
     render_progress(total_wgt, eff_wgt, "⚖️ Berat", "kg")
     
     # 3D Packing Check
-    with st.spinner("Menghitung layout 3D..."):
-         pack_res = run_3d_packing(enriched_items, armada_specs)
-         
-    if not pack_res["success"]:
-        st.warning("⚠️ 3D packing tidak dapat dijalankan, menggunakan kalkulasi volume")
-    elif pack_res["unfitted"] > 0:
-        st.error(f"⚠️ {pack_res['unfitted']} unit tidak muat secara fisik dalam 1 armada.")
-    else:
-        st.success("✅ Seluruh barang muat secara fisik.")
+    pack_res = {"success": True, "fitted": 0, "total": 0, "unfitted": 0, "bin": None}
+    needs_split = (pct_vol > 100 or pct_wgt > 100)
+    
+    if not needs_split:
+        with st.spinner("Menghitung layout 3D..."):
+             pack_res = run_3d_packing(enriched_items, armada_specs)
+             
+        if not pack_res["success"]:
+            st.warning("⚠️ 3D packing tidak dapat dijalankan, menggunakan kalkulasi volume")
+        elif pack_res["unfitted"] > 0:
+            st.error(f"⚠️ {pack_res['unfitted']} unit tidak muat secara fisik dalam 1 armada.")
+            needs_split = True
+        else:
+            st.success("✅ Seluruh barang muat secara fisik.")
 
-    if pack_res["success"] and pack_res.get("bin"):
-        st.info("💡 **Tips Interaktif**: Grafik 3D di bawah ini bisa diputar ke segala arah, digeser, dan *di-zoom* dengan mouse/layar sentuh Anda. Kotak garis hitam tipis adalah batas ruang dalam truk.")
-        fig_3d = draw_3d_packing_bin(pack_res["bin"], armada_specs, "🗺️ Visualisasi 3D Ruang Kargo (Armada Utama)")
-        st.plotly_chart(fig_3d, use_container_width=True)
+        if pack_res["success"] and pack_res.get("bin") and not needs_split:
+            st.info("💡 **Tips Interaktif**: Grafik 3D di bawah ini bisa diputar ke segala arah, digeser, dan *di-zoom* dengan mouse/layar sentuh Anda. Kotak garis hitam tipis adalah batas ruang dalam truk.")
+            fig_3d = draw_3d_packing_bin(pack_res["bin"], armada_specs, "🗺️ Visualisasi 3D Ruang Kargo (Armada Utama)")
+            st.plotly_chart(fig_3d, use_container_width=True)
+    else:
+        st.warning("⚠️ Muatan melebihi 100% dari total tonase atau meter kubik. Perhitungan iterasi grafis 3D otomatis dilompati untuk hemat waktu.")
 
     # --- STEP 5: SPLIT ARMADA ---
-    needs_split = (pct_vol > 100 or pct_wgt > 100 or pack_res.get("unfitted", 0) > 0)
     
     if "user_wants_split" not in st.session_state:
         st.session_state["user_wants_split"] = False
