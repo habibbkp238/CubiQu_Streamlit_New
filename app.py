@@ -60,12 +60,12 @@ def render_sidebar():
 
 # ── Login Page ─────────────────────────────────────────────────
 def login():
-    _, col, _ = st.columns([1, 1.3, 1])
+    _, col, _ = st.columns([1, 1.5, 1])
     with col:
         # Logo / Brand area
         st.markdown('<div class="login-logo-area">', unsafe_allow_html=True)
         if os.path.exists("logo.png"):
-            logo_col1, logo_col2, logo_col3 = st.columns([1, 2, 1])
+            logo_col1, logo_col2, logo_col3 = st.columns([1, 3, 1])
             with logo_col2:
                 st.image("logo.png", use_container_width=True)
         else:
@@ -77,12 +77,10 @@ def login():
             </div>
         """, unsafe_allow_html=True)
 
-        # Login card
-        st.markdown('<div class="login-card">', unsafe_allow_html=True)
-        st.markdown('<p class="login-card-title">Welcome back</p>', unsafe_allow_html=True)
-        st.markdown('<p class="login-card-sub">Enter your credentials to continue</p>', unsafe_allow_html=True)
-
         with st.form("login_form"):
+            st.markdown('<p class="login-card-title">Welcome back</p>', unsafe_allow_html=True)
+            st.markdown('<p class="login-card-sub">Enter your credentials to continue</p>', unsafe_allow_html=True)
+            
             username = st.text_input("Username", placeholder="Enter your username")
             password = st.text_input("Password", type="password", placeholder="Enter your password")
             submitted = st.form_submit_button("Sign In →", use_container_width=True)
