@@ -2,7 +2,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from config import RECOMMENDATION_DAYS, MIN_HISTORY_FOR_CUSTOMER
 
-def get_recommendations(histori_df, master_produk_df, cust_id, shipto_name, current_items):
+def get_recommendations(histori_df, master_produk_df, company, cust_id, shipto_name, current_items):
     """
     Returns a dataframe of recommended items based on history.
     """
@@ -18,8 +18,11 @@ def get_recommendations(histori_df, master_produk_df, cust_id, shipto_name, curr
     # Exclude items already in the cart
     exclude_items = [item['Item_Name'] for item in current_items]
     
-    # Filter for specific customer
-    cust_hist = recent_hist[(recent_hist['Cust_ID'] == cust_id) & (recent_hist['Shipto_Name'] == shipto_name)]
+    # Filter for specific customer & company
+    if 'Company' in recent_hist.columns:
+        cust_hist = recent_hist[(recent_hist['Company'] == company) & (recent_hist['Cust_ID'] == cust_id) & (recent_hist['Shipto_Name'] == shipto_name)]
+    else:
+        cust_hist = recent_hist[(recent_hist['Cust_ID'] == cust_id) & (recent_hist['Shipto_Name'] == shipto_name)]
     
     # Calculate monthly average
     cust_hist_grouped = cust_hist.groupby('Item_Name')['Qty'].sum().reset_index()
@@ -30,15 +33,9 @@ def get_recommendations(histori_df, master_produk_df, cust_id, shipto_name, curr
     
     recommendation_type = "History Customer"
     
-    if len(cust_hist_grouped) < MIN_HISTORY_FOR_CUSTOMER:
-        # Fallback to national recommendation
-        nat_hist = recent_hist.groupby('Item_Name')['Qty'].sum().reset_index()
-        nat_hist['Avg Qty/Bulan'] = (nat_hist['Qty'] / (RECOMMENDATION_DAYS / 30)).apply(lambda x: int(x) + 1 if x % 1 > 0 else int(x))
-        nat_hist = nat_hist[~nat_hist['Item_Name'].isin(exclude_items)]
-        nat_hist = nat_hist.sort_values(by='Qty', ascending=False).head(10)
-        
-        cust_hist_grouped = nat_hist
-        recommendation_type = "Nasional"
+    if len(cust_hist_grouped) < MIN_HISTORY_FOR_CUSTOMER and len(cust_hist_grouped) == 0:
+        # Return empty if nothing found for customer
+        return pd.DataFrame(), recommendation_type
         
     # Merge with product stats
     res = pd.merge(cust_hist_grouped, master_produk_df[['Item_Name', 'Volume', 'Weight', 'Length', 'Height', 'Width', 'Company']], on='Item_Name', how='inner')

@@ -1,6 +1,6 @@
 # 🚛 Kalkulator Muat Armada
 
-Aplikasi web untuk tim sales guna menghitung kapasitas muat barang (3D Bin Packing) ke dalam armada pengiriman (truk) berdasarkan volume dan tonase secara real-time.
+Aplikasi web untuk tim sales guna menghitung kapasitas muat barang ke dalam armada pengiriman (truk) berdasarkan volume dan tonase secara real-time.
 
 ## Struktur Folder
 
@@ -11,7 +11,7 @@ Project ini terstruktur sebagai berikut:
 - `pages/`: 
   - `1_Simulator.py`: Halaman utama kalkulator armada.
   - `2_Admin_Panel.py`: Halaman untuk mengelola master data.
-- `utils/`: Modul utilitas untuk GitHub, Google Sheets, Packing Engine, dsb.
+- `utils/`: Modul utilitas untuk GitHub, Google Sheets, rekomendasi, dsb.
 - `data/`: Sample data excel untuk pengembangan (dapat dipindah ke GitHub repository sungguhan untuk produksi).
 - `.streamlit/secrets.toml`: Penyimpanan token/kredensial secara aman (tidak disertakan dalam version control aslinya/template).
 

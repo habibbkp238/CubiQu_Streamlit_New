@@ -1,0 +1,321 @@
+/* ============================================
+   CubiQu Enterprise Design System v3.0
+   Adaptive: Works with Streamlit Light & Dark
+   ============================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* ── Global ─────────────────────────────────── */
+html, body, [class*="css"] {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+/* Reduce default Streamlit page padding */
+.block-container {
+    padding-top: 1.5rem !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+}
+
+/* ── Page Hero Header ────────────────────────── */
+.page-hero {
+    padding: 1.5rem 2rem;
+    background: linear-gradient(135deg, #1e40af 0%, #2563eb 50%, #3b82f6 100%);
+    border-radius: 16px;
+    color: white;
+    margin-bottom: 2rem;
+}
+.page-hero h1 { color: white; margin: 0; font-size: 1.75rem; font-weight: 700; }
+.page-hero p  { color: rgba(255,255,255,0.8); margin: 0.25rem 0 0; font-size: 0.95rem; }
+
+/* ── Step Section Headers ────────────────────── */
+.step-section {
+    border-left: 4px solid #2563eb;
+    padding: 0.4rem 0 0.4rem 1rem;
+    margin: 2rem 0 1rem;
+}
+.step-section h4 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #2563eb;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.step-section span {
+    font-size: 0.8rem;
+    color: #64748b;
+    display: block;
+    margin-top: 0.1rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* ── Info Cards (Armada Specs, Customer) ─────── */
+.info-card {
+    background: rgba(37, 99, 235, 0.06);
+    border: 1px solid rgba(37, 99, 235, 0.2);
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    align-items: center;
+}
+.info-card-item { }
+.info-card-item .label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #64748b;
+}
+.info-card-item .value {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+/* ── Metric Cards ────────────────────────────── */
+.metric-card {
+    border-radius: 14px;
+    padding: 1.25rem 1.5rem;
+    border: 1px solid #e2e8f0;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+.metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    border-radius: 14px 14px 0 0;
+}
+.metric-card.ok::before   { background: #10b981; }
+.metric-card.warn::before { background: #f59e0b; }
+.metric-card.over::before { background: #ef4444; }
+.metric-card .mc-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #64748b;
+    margin-bottom: 0.5rem;
+}
+.metric-card .mc-value {
+    font-size: 2.2rem;
+    font-weight: 800;
+    line-height: 1;
+}
+.metric-card.ok   .mc-value { color: #10b981; }
+.metric-card.warn .mc-value { color: #f59e0b; }
+.metric-card.over .mc-value { color: #ef4444; }
+.metric-card .mc-sub {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    margin-top: 0.4rem;
+}
+/* Progress bar inside metric */
+.mc-bar-bg {
+    background: #e2e8f0;
+    border-radius: 100px;
+    height: 6px;
+    margin-top: 0.75rem;
+    overflow: hidden;
+}
+.mc-bar-fill {
+    height: 6px;
+    border-radius: 100px;
+    transition: width 0.4s ease;
+}
+
+/* ── Item Row Cards ──────────────────────────── */
+.item-row-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.6rem 1rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    transition: border-color 0.2s;
+}
+.item-row-card:hover { border-color: #2563eb; }
+
+/* ── Optimization & Reco Cards ───────────────── */
+.opt-card {
+    background: rgba(16, 185, 129, 0.04);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    border-radius: 12px;
+    padding: 0.9rem 1.2rem;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.reco-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 0.9rem 1.2rem;
+    margin-bottom: 0.75rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.reco-card:hover {
+    border-color: #2563eb;
+    box-shadow: 0 4px 12px rgba(37,99,235,0.08);
+}
+.card-item-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #1e293b;
+}
+.card-item-sub {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-top: 0.15rem;
+}
+.badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 100px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+.badge-blue  { background: #dbeafe; color: #1d4ed8; }
+.badge-green { background: #d1fae5; color: #065f46; }
+
+/* ── Action Buttons ──────────────────────────── */
+.stButton > button {
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 0.875rem !important;
+    transition: all 0.2s ease !important;
+    border: 1px solid #e2e8f0 !important;
+}
+.stButton > button:hover:not(:disabled) {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important;
+}
+
+/* Primary buttons (form submit) */
+.stFormSubmitButton > button {
+    background: #2563eb !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+}
+.stFormSubmitButton > button:hover {
+    background: #1d4ed8 !important;
+}
+
+/* ── Sidebar ─────────────────────────────────── */
+.sidebar-user-card {
+    background: linear-gradient(135deg, #2563eb, #1e40af);
+    color: white;
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    margin-bottom: 0.5rem;
+    text-align: center;
+}
+.sidebar-user-card .user-name { font-weight: 700; font-size: 1rem; }
+.sidebar-user-card .user-role {
+    font-size: 0.75rem;
+    opacity: 0.8;
+    background: rgba(255,255,255,0.15);
+    border-radius: 100px;
+    padding: 0.1rem 0.5rem;
+    display: inline-block;
+    margin-top: 0.3rem;
+}
+
+/* ── Login Page ──────────────────────────────── */
+.login-wrapper {
+    max-width: 420px;
+    margin: 2rem auto;
+}
+.login-logo-area {
+    text-align: center;
+    padding: 2rem 0 1.5rem;
+}
+.login-logo-area h2 {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #1e293b;
+    margin: 0.5rem 0 0;
+}
+.login-logo-area p {
+    color: #64748b;
+    font-size: 0.9rem;
+    margin: 0.25rem 0 0;
+}
+.login-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 2rem;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+}
+.login-card-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 0.25rem;
+    text-align: center;
+}
+.login-card-sub {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+/* ── Status Banner ───────────────────────────── */
+.status-banner {
+    border-radius: 10px;
+    padding: 0.8rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 1rem;
+}
+.status-banner.ok   { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+.status-banner.over { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+/* ── Section Divider ─────────────────────────── */
+.section-divider {
+    border: none;
+    border-top: 1px solid #e2e8f0;
+    margin: 2rem 0;
+}
+
+/* ── Welcome Page ────────────────────────────── */
+.welcome-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 2.5rem;
+    margin-top: 1.5rem;
+}
+.feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+.feature-item {
+    background: rgba(37,99,235,0.04);
+    border: 1px solid rgba(37,99,235,0.15);
+    border-radius: 12px;
+    padding: 1.25rem;
+    text-align: center;
+}
+.feature-item .fi-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+.feature-item .fi-title { font-weight: 700; font-size: 0.9rem; color: #1e293b; }
+.feature-item .fi-desc  { font-size: 0.78rem; color: #64748b; margin-top: 0.25rem; }

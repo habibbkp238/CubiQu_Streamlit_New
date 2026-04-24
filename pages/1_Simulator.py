@@ -1,556 +1,490 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import io
-
-import sys
 import os
 
 from utils.github_utils import read_file_from_github, upload_file_to_github
 from utils.gsheets_utils import append_report_log
-from utils.packing_engine import run_3d_packing, draw_2d_floor_plan, draw_3d_packing_bin
 from utils.recommendation import get_recommendations
 from utils.report_generator import generate_excel_report, generate_download_template
 
+# ── Callbacks ──────────────────────────────────────────────────
+def update_item_qty(item_name, add_qty):
+    for j, item in enumerate(st.session_state["item_list"]):
+        if item["Item_Name"] == item_name:
+            new_val = int(item["Qty"] + add_qty)
+            item["Qty"] = new_val
+            st.session_state[f"item_qty_{j}"] = new_val
+            break
 
-st.set_page_config(page_title="Simulator Muat Armada", page_icon="🚛", layout="wide")
+# ── Page Config ────────────────────────────────────────────────
+st.set_page_config(page_title="Simulator – CubiQu", page_icon="🚛", layout="wide")
+
+def load_css():
+    if os.path.exists("utils/style.css"):
+        with open("utils/style.css") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+load_css()
 
 if not st.session_state.get("logged_in", False):
-    st.warning("Silakan login dari halaman utama.")
+    st.warning("⚠️ Silakan login dari halaman utama terlebih dahulu.")
     st.stop()
 
-# --- Initialize specific state variables if missing ---
-def init_page_state():
-    defaults = {
-        "selected_company": None,
-        "selected_cust_id": None,
-        "selected_cust_name": None,
-        "selected_shipto": None,
-        "selected_armada": None,
-        "item_list": [],
-        "armada1_items": [],
-        "armada2_items": [],
-        "show_split": False,
-        "report_generated": False
-    }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
+# ── Sidebar ────────────────────────────────────────────────────
+with st.sidebar:
+    if os.path.exists("logo.png"):
+        st.image("logo.png", use_container_width=True)
+    st.markdown(f"""
+        <div class="sidebar-user-card">
+            <div class="user-name">👤 {st.session_state['username']}</div>
+            <div class="user-role">{st.session_state['role'].capitalize()}</div>
+        </div>
+    """, unsafe_allow_html=True)
 
-init_page_state()
+# ── Init State ─────────────────────────────────────────────────
+for k, v in {"selected_company": None, "selected_cust_id": None,
+             "selected_cust_name": None, "selected_shipto": None,
+             "selected_armada": None, "item_list": [], "report_generated": False}.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
-# --- Load Data ---
+# ── Load Data ──────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_all_data():
-    df_produk = read_file_from_github("data/master_produk.xlsx")
-    df_armada = read_file_from_github("data/master_armada.xlsx")
-    df_cust = read_file_from_github("data/master_customer_armada.xlsx")
+    df_produk  = read_file_from_github("data/master_produk.xlsx")
+    df_armada  = read_file_from_github("data/master_armada.xlsx")
+    df_cust    = read_file_from_github("data/master_customer_armada.xlsx")
     df_histori = read_file_from_github("data/histori_penjualan.xlsx")
     return df_produk, df_armada, df_cust, df_histori
 
 try:
-    with st.spinner("Memuat Master Data..."):
+    with st.spinner("Memuat master data..."):
         df_produk, df_armada, df_cust, df_histori = load_all_data()
 except Exception as e:
     st.error(f"Gagal memuat master data: {e}")
     st.stop()
 
-st.title("🚛 Simulator Kalkulator Muat Armada")
+# ── Page Hero ──────────────────────────────────────────────────
+st.markdown("""
+    <div class="page-hero">
+        <h1>🚛 Simulator Muat Armada</h1>
+        <p>Rencanakan muatan secara efisien — real-time volume, tonase & optimasi kapasitas.</p>
+    </div>
+""", unsafe_allow_html=True)
 
-# --- STEP 1: CUSTOMER SELECTION ---
-st.header("1. Pilih Pelanggan")
+# ══════════════════════════════════════════════════════════════
+# STEP 1 — PILIH PELANGGAN
+# ══════════════════════════════════════════════════════════════
+st.markdown("""<div class="step-section"><h4>Step 1 · Pilih Pelanggan</h4>
+    <span>Tentukan Company, Customer, dan lokasi Ship-To.</span></div>""", unsafe_allow_html=True)
+
+active_cust = df_cust[df_cust['is_active'] == True]
+companies   = active_cust['Company'].unique().tolist()
 
 col1, col2, col3 = st.columns(3)
-
 with col1:
-    active_cust = df_cust[df_cust['is_active'] == True]
-    companies = active_cust['Company'].unique().tolist()
-    
     selected_company = st.selectbox(
-        "Company", 
-        options=companies, 
+        "Company",
+        options=companies,
         index=companies.index(st.session_state["selected_company"]) if st.session_state["selected_company"] in companies else 0
     )
     if selected_company != st.session_state["selected_company"]:
-        st.session_state["selected_company"] = selected_company
-        # Reset downstream selections safely
+        st.session_state["selected_company"]  = selected_company
         st.session_state["selected_cust_name"] = None
-        st.session_state["selected_shipto"] = None
+        st.session_state["selected_shipto"]    = None
+
+cust_by_comp = active_cust[active_cust['Company'] == selected_company]
+cust_names   = cust_by_comp['Cust_Name'].unique().tolist()
 
 with col2:
-    cust_by_comp = active_cust[active_cust['Company'] == selected_company]
-    cust_names = cust_by_comp['Cust_Name'].unique().tolist()
-    
-    idx_cust = 0
-    if st.session_state["selected_cust_name"] in cust_names:
-        idx_cust = cust_names.index(st.session_state["selected_cust_name"])
-        
-    selected_cust_name = st.selectbox("Customer", options=cust_names, index=idx_cust if cust_names else 0)
-    
+    idx_cust = cust_names.index(st.session_state["selected_cust_name"]) if st.session_state["selected_cust_name"] in cust_names else 0
+    selected_cust_name = st.selectbox("Customer", options=cust_names, index=idx_cust)
     if selected_cust_name != st.session_state["selected_cust_name"]:
         st.session_state["selected_cust_name"] = selected_cust_name
-        st.session_state["selected_shipto"] = None
+        st.session_state["selected_shipto"]    = None
+
+shipto_by_cust = cust_by_comp[cust_by_comp['Cust_Name'] == selected_cust_name]
+shiptos        = shipto_by_cust['Ship_To_Location'].unique().tolist()
 
 with col3:
-    shipto_by_cust = cust_by_comp[cust_by_comp['Cust_Name'] == selected_cust_name]
-    shiptos = shipto_by_cust['Ship_To_Location'].unique().tolist()
-    
-    idx_shipto = 0
-    if st.session_state["selected_shipto"] in shiptos:
-        idx_shipto = shiptos.index(st.session_state["selected_shipto"])
-        
-    selected_shipto = st.selectbox("Ship-To-Name", options=shiptos, index=idx_shipto if shiptos else 0)
-    
+    idx_shipto = shiptos.index(st.session_state["selected_shipto"]) if st.session_state["selected_shipto"] in shiptos else 0
+    selected_shipto = st.selectbox("Ship-To Location", options=shiptos, index=idx_shipto)
     if selected_shipto != st.session_state["selected_shipto"]:
-        st.session_state["selected_shipto"] = selected_shipto
+        st.session_state["selected_shipto"]  = selected_shipto
         st.session_state["selected_armada"] = None
 
-if not selected_company or not selected_cust_name or not selected_shipto:
-    st.info("Pilih pelanggan terlebih dahulu.")
+if not (selected_company and selected_cust_name and selected_shipto):
+    st.info("Pilih pelanggan terlebih dahulu untuk melanjutkan.")
     st.stop()
 
-# Get customer info
 cust_info = shipto_by_cust[shipto_by_cust['Ship_To_Location'] == selected_shipto].iloc[0]
 st.session_state["selected_cust_id"] = cust_info['Cust_ID']
 max_armada = cust_info['Max_Armada']
 
-st.success(f"**Cust ID**: {cust_info['Cust_ID']} | **Max Armada**: {max_armada}")
+st.markdown(f"""
+    <div class="info-card">
+        <div class="info-card-item"><div class="label">Cust ID</div><div class="value">{cust_info['Cust_ID']}</div></div>
+        <div class="info-card-item"><div class="label">Customer</div><div class="value">{selected_cust_name}</div></div>
+        <div class="info-card-item"><div class="label">Ship-To</div><div class="value">{selected_shipto}</div></div>
+        <div class="info-card-item"><div class="label">Max Armada</div><div class="value">{max_armada}</div></div>
+    </div>
+""", unsafe_allow_html=True)
 
+# ══════════════════════════════════════════════════════════════
+# STEP 2 — PILIH ARMADA
+# ══════════════════════════════════════════════════════════════
+st.markdown("""<div class="step-section"><h4>Step 2 · Pilih Jenis Armada</h4>
+    <span>Daftar armada difilter otomatis berdasarkan aturan kapasitas pelanggan.</span></div>""", unsafe_allow_html=True)
 
-# --- STEP 2: ARMADA SELECTION ---
-st.header("2. Pilih Jenis Armada")
-
-# Tentukan urutan hirarki secara dinamis berdasarkan Volume (m3) dari Master Data
-df_armada_sorted = df_armada.sort_values('Max_Volume_m3').copy()
-dynamic_order = df_armada_sorted['Jenis_Armada'].tolist()
+df_armada_sorted   = df_armada.sort_values('Max_Volume_m3').copy()
+dynamic_order      = df_armada_sorted['Jenis_Armada'].tolist()
 dynamic_order_clean = [x.strip().lower() for x in dynamic_order]
-
-max_armada_clean = str(max_armada).strip().lower()
+max_armada_clean   = str(max_armada).strip().lower()
 
 if max_armada_clean == "container 20":
-    # Aturan Khusus: Hanya CONTAINER 20
     allowed_list_clean = ["container 20"]
 else:
-    # Aturan Standar: Ikuti hirarki volume, tapi sembunyikan CONTAINER 20
     try:
         max_idx = dynamic_order_clean.index(max_armada_clean)
-        # Ambil semua yang volumenya <= Max_Armada, buang Container 20
         allowed_list_clean = [x for x in dynamic_order_clean[:max_idx+1] if x != "container 20"]
     except ValueError:
-        # Fallback jika Max_Armada tidak ada di tabel Master Armada
         allowed_list_clean = [x for x in dynamic_order_clean if x != "container 20"]
 
-# Filter daftar armada yang tersedia dari dataframe asli (mengikuti urutan volume)
 av_armadas = [name for name in dynamic_order if name.strip().lower() in allowed_list_clean]
-
 idx_armada = len(av_armadas) - 1 if av_armadas else 0
 if st.session_state.get("selected_armada") in av_armadas:
     idx_armada = av_armadas.index(st.session_state["selected_armada"])
 
-selected_armada = st.selectbox("Pilih Jenis Armada", options=av_armadas, index=idx_armada if av_armadas else 0)
+selected_armada = st.selectbox("Pilih Jenis Armada", options=av_armadas, index=idx_armada)
 st.session_state["selected_armada"] = selected_armada
 
 armada_specs = df_armada[df_armada['Jenis_Armada'] == selected_armada].iloc[0]
 eff_vol = armada_specs['Max_Volume_m3'] * armada_specs['Safety_Factor']
 eff_wgt = armada_specs['Max_Tonase_Kg'] * armada_specs['Safety_Factor']
 
-st.info(f"**Spesifikasi Efektif**: {eff_vol:.2f} m³ | {eff_wgt:,.0f} kg | Dimensi (LxTxL): {armada_specs['Length_cm']}x{armada_specs['Height_cm']}x{armada_specs['Width_cm']} cm | Safety Factor: {armada_specs['Safety_Factor']*100:.0f}%")
+st.markdown(f"""
+    <div class="info-card">
+        <div class="info-card-item"><div class="label">Armada</div><div class="value">{selected_armada}</div></div>
+        <div class="info-card-item"><div class="label">Efektif Volume</div><div class="value">{eff_vol:.2f} m³</div></div>
+        <div class="info-card-item"><div class="label">Efektif Tonase</div><div class="value">{eff_wgt:,.0f} kg</div></div>
+        <div class="info-card-item"><div class="label">Dimensi (P×T×L)</div><div class="value">{armada_specs['Length_cm']}×{armada_specs['Height_cm']}×{armada_specs['Width_cm']} cm</div></div>
+        <div class="info-card-item"><div class="label">Safety Factor</div><div class="value">{armada_specs['Safety_Factor']*100:.0f}%</div></div>
+    </div>
+""", unsafe_allow_html=True)
 
-
-# --- STEP 3: INPUT BARANG ---
-st.header("3. Input Barang")
+# ══════════════════════════════════════════════════════════════
+# STEP 3 — INPUT BARANG
+# ══════════════════════════════════════════════════════════════
+st.markdown("""<div class="step-section"><h4>Step 3 · Input Barang</h4>
+    <span>Tambah item secara manual atau upload file Excel.</span></div>""", unsafe_allow_html=True)
 
 active_products = df_produk[(df_produk['is_active'] == True) & (df_produk['Company'] == selected_company)]
-product_names = active_products['Item_Name'].tolist()
+product_names   = active_products['Item_Name'].tolist()
 
 tab1, tab2 = st.tabs(["✏️ Input Manual", "📤 Upload Excel"])
 
 with tab1:
-    if st.button("+ Tambah Barang"):
-        st.session_state["item_list"].append({
-            "Item_Name": product_names[0] if product_names else "",
-            "Qty": 1
-        })
+    if st.button("➕ Tambah Baris Item", use_container_width=False):
+        st.session_state["item_list"].append({"Item_Name": product_names[0] if product_names else "", "Qty": 1})
         st.rerun()
-        
+
     for i, item in enumerate(st.session_state["item_list"]):
-        c1, c2, c3 = st.columns([3, 1, 1])
+        c1, c2, c3 = st.columns([4, 1, 1])
         with c1:
             prod_idx = product_names.index(item["Item_Name"]) if item["Item_Name"] in product_names else 0
-            new_name = st.selectbox(f"Item #{i+1}", options=product_names, index=prod_idx, key=f"item_name_{i}")
+            new_name = st.selectbox(f"Item #{i+1}", options=product_names, index=prod_idx, key=f"item_name_{i}", label_visibility="collapsed")
         with c2:
-            new_qty = st.number_input(f"Qty", min_value=1, value=int(item["Qty"]), key=f"item_qty_{i}")
+            new_qty = st.number_input("Qty", min_value=1, value=int(item["Qty"]), key=f"item_qty_{i}", label_visibility="collapsed")
         with c3:
-            st.write("")
-            st.write("")
-            if st.button("🗑️", key=f"del_{i}"):
+            if st.button("🗑️", key=f"del_{i}", help="Hapus item ini"):
                 st.session_state["item_list"].pop(i)
                 st.rerun()
-                
         st.session_state["item_list"][i]["Item_Name"] = new_name
-        st.session_state["item_list"][i]["Qty"] = new_qty
+        st.session_state["item_list"][i]["Qty"]       = new_qty
 
 with tab2:
     col_dl, col_ul = st.columns(2)
     with col_dl:
         if product_names:
-            template_bytes = generate_download_template(product_names)
             st.download_button(
-                label="📥 Download Template",
-                data=template_bytes,
+                label="📥 Download Template Excel",
+                data=generate_download_template(product_names),
                 file_name="template_input_barang.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-            
-    uploaded_file = st.file_uploader("Upload file Excel input barang", type=["xlsx"])
-    if uploaded_file is not None:
-        try:
-            df_up = pd.read_excel(uploaded_file)
-            if 'Item_Name' not in df_up.columns or 'Qty' not in df_up.columns:
-                st.error("File harus memiliki kolom 'Item_Name' dan 'Qty'.")
-            else:
-                valid_items = []
-                for idx, row in df_up.iterrows():
-                    name = row['Item_Name']
-                    qty = row['Qty']
-                    if pd.notna(name) and name in product_names:
-                        valid_items.append({"Item_Name": name, "Qty": int(qty)})
-                
-                st.write(f"Ditemukan {len(valid_items)} item valid.")
-                if st.button("✅ Konfirmasi & Gunakan Data Ini"):
-                    st.session_state["item_list"] = valid_items
-                    st.rerun()
-        except Exception as e:
-            st.error(f"Gagal membaca file: {e}")
+    with col_ul:
+        uploaded_file = st.file_uploader("Upload file Excel", type=["xlsx"], label_visibility="collapsed")
+        if uploaded_file:
+            try:
+                df_up = pd.read_excel(uploaded_file)
+                if 'Item_Name' not in df_up.columns or 'Qty' not in df_up.columns:
+                    st.error("File harus memiliki kolom 'Item_Name' dan 'Qty'.")
+                else:
+                    valid_items = [{"Item_Name": r['Item_Name'], "Qty": int(r['Qty'])}
+                                   for _, r in df_up.iterrows() if pd.notna(r['Item_Name']) and r['Item_Name'] in product_names]
+                    st.write(f"✅ Ditemukan **{len(valid_items)}** item valid.")
+                    if st.button("Konfirmasi & Gunakan Data Ini"):
+                        st.session_state["item_list"] = valid_items
+                        st.rerun()
+            except Exception as e:
+                st.error(f"Gagal membaca file: {e}")
 
-# Enrich item details
+# ── Enrich Items ───────────────────────────────────────────────
 enriched_items = []
 total_vol = 0.0
 total_wgt = 0.0
-
 for it in st.session_state["item_list"]:
     prod_row = active_products[active_products['Item_Name'] == it['Item_Name']]
     if not prod_row.empty:
         p = prod_row.iloc[0]
-        it_full = {
-            "Item_Name": p['Item_Name'],
-            "Qty": it['Qty'],
-            "Volume": p['Volume'],
-            "Weight": p['Weight'],
-            "Length": p['Length'],
-            "Height": p['Height'],
-            "Width": p['Width']
-        }
-        enriched_items.append(it_full)
-        total_vol += (p['Volume'] * it['Qty'])
-        total_wgt += (p['Weight'] * it['Qty'])
+        enriched_items.append({"Item_Name": p['Item_Name'], "Qty": it['Qty'],
+                                "Volume": p['Volume'], "Weight": p['Weight'],
+                                "Length": p['Length'], "Height": p['Height'], "Width": p['Width']})
+        total_vol += p['Volume'] * it['Qty']
+        total_wgt += p['Weight'] * it['Qty']
 
-# --- STEP 4: KALKULASI REAL-TIME ---
-st.header("4. Status Kapasitas")
+# ══════════════════════════════════════════════════════════════
+# STEP 4 — STATUS KAPASITAS
+# ══════════════════════════════════════════════════════════════
+st.markdown("""<div class="step-section"><h4>Step 4 · Status Kapasitas</h4>
+    <span>Kalkulasi real-time berdasarkan item yang dipilih.</span></div>""", unsafe_allow_html=True)
 
-if enriched_items:
-    pct_vol = (total_vol / eff_vol) * 100
-    pct_wgt = (total_wgt / eff_wgt) * 100
-    
-    st.write("### Rekapitulasi")
-    
-    def render_progress(val, limit, label, unit):
-        pct = min(val / limit * 100, 100.0)
-        c = "green"
-        if val / limit >= 1.0:
-            c = "red"
-        elif val / limit >= 0.8:
-            c = "orange"
-            
-        st.markdown(f"**{label}**: <span style='color:{c}; font-weight:bold;'>{val / limit * 100:.1f}% terpakai</span> ({val:,.2f} {unit} dari {limit:,.2f} {unit})", unsafe_allow_html=True)
-        st.progress(pct / 100.0)
-        
-    render_progress(total_vol, eff_vol, "📦 Volume", "m³")
-    render_progress(total_wgt, eff_wgt, "⚖️ Berat", "kg")
-    
-    # 3D Packing Check
-    pack_res = {"success": True, "fitted": 0, "total": 0, "unfitted": 0, "bin": None}
-    needs_split = (pct_vol > 100 or pct_wgt > 100)
-    
-    if not needs_split:
-        with st.spinner("Menghitung layout 3D..."):
-             pack_res = run_3d_packing(enriched_items, armada_specs)
-             
-        if not pack_res["success"]:
-            st.warning("⚠️ 3D packing tidak dapat dijalankan, menggunakan kalkulasi volume")
-        elif pack_res["unfitted"] > 0:
-            st.error(f"⚠️ {pack_res['unfitted']} unit tidak muat secara fisik dalam 1 armada.")
-            needs_split = True
-        else:
-            st.success("✅ Seluruh barang muat secara fisik.")
+if not enriched_items:
+    st.info("💡 Tambahkan barang di Step 3 untuk melihat status kapasitas.")
+    st.stop()
 
-        if pack_res["success"] and pack_res.get("bin") and not needs_split:
-            st.info("💡 **Tips Interaktif**: Grafik 3D di bawah ini bisa diputar ke segala arah, digeser, dan *di-zoom* dengan mouse/layar sentuh Anda. Kotak garis hitam tipis adalah batas ruang dalam truk.")
-            fig_3d = draw_3d_packing_bin(pack_res["bin"], armada_specs, "🗺️ Visualisasi 3D Ruang Kargo (Armada Utama)")
-            st.plotly_chart(fig_3d, use_container_width=True)
-    else:
-        st.warning("⚠️ Muatan melebihi 100% dari total tonase atau meter kubik. Perhitungan iterasi grafis 3D otomatis dilompati untuk hemat waktu.")
+pct_vol    = (total_vol / eff_vol) * 100
+pct_wgt    = (total_wgt / eff_wgt) * 100
+needs_split = pct_vol > 100 or pct_wgt > 100
 
-    # --- STEP 5: SPLIT ARMADA ---
-    
-    if "user_wants_split" not in st.session_state:
-        st.session_state["user_wants_split"] = False
-    if "armada2_type" not in st.session_state:
-        st.session_state["armada2_type"] = None
+def _bar_color(pct):
+    if pct > 100: return "#ef4444"
+    if pct >= 80: return "#f59e0b"
+    return "#10b981"
 
+def _card_class(pct):
+    if pct > 100: return "over"
+    if pct >= 80: return "warn"
+    return "ok"
+
+bar_w_vol = min(pct_vol, 100)
+bar_w_wgt = min(pct_wgt, 100)
+
+m1, m2, m3 = st.columns(3)
+with m1:
+    st.markdown(f"""
+        <div class="metric-card {_card_class(pct_vol)}">
+            <div class="mc-label">📦 Volume Terpakai</div>
+            <div class="mc-value">{pct_vol:.1f}%</div>
+            <div class="mc-sub">{total_vol:.2f} m³ dari {eff_vol:.2f} m³</div>
+            <div class="mc-bar-bg"><div class="mc-bar-fill" style="width:{bar_w_vol}%; background:{_bar_color(pct_vol)};"></div></div>
+        </div>
+    """, unsafe_allow_html=True)
+with m2:
+    st.markdown(f"""
+        <div class="metric-card {_card_class(pct_wgt)}">
+            <div class="mc-label">⚖️ Tonase Terpakai</div>
+            <div class="mc-value">{pct_wgt:.1f}%</div>
+            <div class="mc-sub">{total_wgt:,.0f} kg dari {eff_wgt:,.0f} kg</div>
+            <div class="mc-bar-bg"><div class="mc-bar-fill" style="width:{bar_w_wgt}%; background:{_bar_color(pct_wgt)};"></div></div>
+        </div>
+    """, unsafe_allow_html=True)
+with m3:
     if needs_split:
-        st.warning("⚠️ Kapasitas armada pertama tidak mencukupi untuk semua barang.")
-        
-        # Confirmation
-        user_wants_split = st.checkbox("Gunakan 2 Armada (Split)?", value=st.session_state["user_wants_split"])
-        st.session_state["user_wants_split"] = user_wants_split
-        
-        if user_wants_split:
-            st.session_state["show_split"] = True
-        else:
-            st.session_state["show_split"] = False
+        st.markdown("""
+            <div class="metric-card over">
+                <div class="mc-label">🚨 Status Muatan</div>
+                <div class="mc-value">OVERLOAD</div>
+                <div class="mc-sub">Kurangi jumlah item atau ganti armada yang lebih besar</div>
+            </div>
+        """, unsafe_allow_html=True)
+    elif pct_vol >= 99.0 or pct_wgt >= 99.0:
+        st.markdown(f"""
+            <div class="metric-card ok">
+                <div class="mc-label">✅ Status Muatan</div>
+                <div class="mc-value">IDEAL</div>
+                <div class="mc-sub">Kapasitas sudah dimanfaatkan secara optimal</div>
+            </div>
+        """, unsafe_allow_html=True)
     else:
-        st.session_state["show_split"] = False
-        st.session_state["user_wants_split"] = False
-        st.session_state["armada2_type"] = None
+        st.markdown(f"""
+            <div class="metric-card warn">
+                <div class="mc-label">⚠️ Status Muatan</div>
+                <div class="mc-value">BELUM IDEAL</div>
+                <div class="mc-sub">Sisa: {eff_vol-total_vol:.2f} m³ · {eff_wgt-total_wgt:,.0f} kg — optimalkan di Step 5</div>
+            </div>
+        """, unsafe_allow_html=True)
 
-    if not st.session_state.get("show_split"):
-        st.session_state["armada1_items"] = enriched_items.copy()
-        st.session_state["armada2_items"] = []
-        
-    if st.session_state.get("show_split"):
-        st.header("5. Split Armada (2 Armada)")
-        
-        armada2_options = df_armada['Jenis_Armada'].tolist()
-        idx_a2 = 0
-        if st.session_state["armada2_type"] in armada2_options:
-            idx_a2 = armada2_options.index(st.session_state["armada2_type"])
-            
-        armada2_type = st.selectbox("Pilih Jenis Armada 2", options=armada2_options, index=idx_a2)
-        if armada2_type != st.session_state["armada2_type"]:
-            st.session_state["armada2_type"] = armada2_type
-            st.session_state["split_initialized"] = False
-            st.rerun()
-            
-        a2_specs = df_armada[df_armada['Jenis_Armada'] == armada2_type].iloc[0]
-        a2_eff_vol = a2_specs['Max_Volume_m3'] * a2_specs['Safety_Factor']
-        a2_eff_wgt = a2_specs['Max_Tonase_Kg'] * a2_specs['Safety_Factor']
+st.markdown("<br>", unsafe_allow_html=True)
 
-        # Initial auto distribution if not populated
-        if not st.session_state.get("split_initialized", False) or sum([it['Qty'] for it in st.session_state["armada1_items"]]) + sum([it['Qty'] for it in st.session_state["armada2_items"]]) != sum([it['Qty'] for it in enriched_items]):
-            st.session_state["armada1_items"] = []
-            st.session_state["armada2_items"] = []
-            
-            # Simple greedy
-            sorted_items = sorted(enriched_items, key=lambda x: x['Volume'], reverse=True)
-            v1, w1 = 0, 0
-            for iit in sorted_items:
-                rem_qty = iit['Qty']
-                
-                while rem_qty > 0:
-                    if v1 + iit['Volume'] <= eff_vol and w1 + iit['Weight'] <= eff_wgt:
-                        v1 += iit['Volume']
-                        w1 += iit['Weight']
-                        # Add 1 unit to A1
-                        found = False
-                        for a1 in st.session_state["armada1_items"]:
-                            if a1['Item_Name'] == iit['Item_Name']:
-                                a1['Qty'] += 1
-                                found = True
-                        if not found:
-                            new_it = iit.copy()
-                            new_it['Qty'] = 1
-                            st.session_state["armada1_items"].append(new_it)
-                    else:
-                        # Add to A2
-                        found = False
-                        for a2 in st.session_state["armada2_items"]:
-                            if a2['Item_Name'] == iit['Item_Name']:
-                                a2['Qty'] += 1
-                                found = True
-                        if not found:
-                            new_it = iit.copy()
-                            new_it['Qty'] = 1
-                            st.session_state["armada2_items"].append(new_it)
-                    rem_qty -= 1
-            st.session_state["split_initialized"] = True
-            
-        c_a1, c_a2 = st.columns(2)
-        
-        def calc_summary(items_list):
-            v = sum([i['Volume'] * i['Qty'] for i in items_list])
-            w = sum([i['Weight'] * i['Qty'] for i in items_list])
-            return v, w
-            
-        with c_a1:
-            st.subheader("🚛 Armada 1")
-            v1, w1 = calc_summary(st.session_state["armada1_items"])
-            st.write(f"Vol: {v1/eff_vol*100:.1f}% | Berat: {w1/eff_wgt*100:.1f}%")
-            
-            for idx, iit in enumerate(st.session_state["armada1_items"]):
-                c_n, c_b = st.columns([4, 1])
-                c_n.write(f"{iit['Item_Name']} (x{iit['Qty']})")
-                if c_b.button("→", key=f"mv_r_{idx}"):
-                    # Move 1 to A2
-                    st.session_state["armada1_items"][idx]['Qty'] -= 1
-                    found = False
-                    for x in st.session_state["armada2_items"]:
-                        if x['Item_Name'] == iit['Item_Name']:
-                            x['Qty'] += 1
-                            found = True
-                    if not found:
-                        ni = iit.copy()
-                        ni['Qty'] = 1
-                        st.session_state["armada2_items"].append(ni)
-                    if st.session_state["armada1_items"][idx]['Qty'] == 0:
-                        st.session_state["armada1_items"].pop(idx)
+# ══════════════════════════════════════════════════════════════
+# STEP 5 — OPTIMALKAN MUATAN (only if not overload)
+# ══════════════════════════════════════════════════════════════
+if not needs_split and (pct_vol < 99.9 or pct_wgt < 99.9):
+    st.markdown("""<div class="step-section"><h4>Step 5 · Optimalkan Muatan</h4>
+        <span>Tambah lebih banyak dari item yang sudah ada untuk mendekati 100% kapasitas.</span></div>""", unsafe_allow_html=True)
+
+    sisa_v = eff_vol - total_vol
+    sisa_w = eff_wgt - total_wgt
+
+    seen, unique_items = set(), []
+    for it in enriched_items:
+        if it['Item_Name'] not in seen:
+            unique_items.append(it)
+            seen.add(it['Item_Name'])
+
+    has_suggestion = False
+    for idx, it in enumerate(unique_items):
+        add_qty = int(min(
+            sisa_v / it['Volume'] if it['Volume'] > 0 else float('inf'),
+            sisa_w / it['Weight'] if it['Weight'] > 0 else float('inf')
+        ))
+        if add_qty > 0:
+            has_suggestion = True
+            c1, c2, c3 = st.columns([5, 2, 2])
+            with c1:
+                st.markdown(f"""
+                    <div style="padding: 0.5rem 0;">
+                        <div class="card-item-name">{it['Item_Name']}</div>
+                        <div class="card-item-sub">Vol/Karton: {it['Volume']:.4f} m³ &nbsp;|&nbsp; Berat/Karton: {it['Weight']:.2f} kg</div>
+                    </div>
+                """, unsafe_allow_html=True)
+            with c2:
+                st.markdown(f"""
+                    <div style="padding:0.5rem 0; text-align:center;">
+                        <div class="card-item-sub">Bisa ditambah</div>
+                        <span class="badge badge-green">+{add_qty} Karton</span>
+                    </div>
+                """, unsafe_allow_html=True)
+            with c3:
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.button(f"Tambah {add_qty} Karton",
+                          key=f"opt_{it['Item_Name']}_{idx}",
+                          on_click=update_item_qty,
+                          args=(it['Item_Name'], add_qty),
+                          use_container_width=True)
+            st.markdown("<hr class='section-divider'>", unsafe_allow_html=True)
+
+    if not has_suggestion:
+        st.info("Kapasitas sudah optimal — tidak ada penambahan yang memungkinkan.")
+
+elif needs_split:
+    st.markdown("""
+        <div class="status-banner over">
+            🚨 Muatan OVERLOAD — Kurangi jumlah item atau pilih armada yang lebih besar.
+        </div>
+    """, unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════
+# STEP 6 — REKOMENDASI ITEM BARU
+# ══════════════════════════════════════════════════════════════
+if not needs_split and pct_vol < 100 and pct_wgt < 100:
+    st.markdown("""<div class="step-section"><h4>Step 6 · Rekomendasi Item Baru</h4>
+        <span>Item yang sering dipesan pelanggan ini tapi belum ada di daftar muat.</span></div>""", unsafe_allow_html=True)
+
+    reco_df, reco_type = get_recommendations(df_histori, df_produk, selected_company,
+                                             cust_info['Cust_ID'], selected_shipto, enriched_items)
+    if reco_df.empty:
+        st.info("Tidak ada rekomendasi yang tersedia berdasarkan histori transaksi.")
+    else:
+        st.markdown(f"<span class='badge badge-blue'>Sumber: {reco_type}</span><br><br>", unsafe_allow_html=True)
+
+        sisa_v = eff_vol - total_vol
+        sisa_w = eff_wgt - total_wgt
+
+        for idx, row in reco_df.iterrows():
+            add_v = row['Volume/Unit'] * row['Avg Qty/Bulan']
+            add_w = row['Weight/Unit'] * row['Avg Qty/Bulan']
+            disabled_avg = bool((total_vol + add_v > eff_vol) or (total_wgt + add_w > eff_wgt))
+
+            max_qty = int(min(
+                sisa_v / row['Volume/Unit'] if row['Volume/Unit'] > 0 else float('inf'),
+                sisa_w / row['Weight/Unit'] if row['Weight/Unit'] > 0 else float('inf')
+            ))
+
+            c1, c2, c3, c4 = st.columns([4, 2, 2, 2])
+            with c1:
+                st.markdown(f"""
+                    <div style="padding:0.4rem 0;">
+                        <div class="card-item-name">{row['Item_Name']}</div>
+                        <div class="card-item-sub">Vol: {row['Volume/Unit']:.4f} m³ &nbsp;|&nbsp; Berat: {row['Weight/Unit']:.2f} kg</div>
+                    </div>
+                """, unsafe_allow_html=True)
+            with c2:
+                st.markdown(f"""
+                    <div style="padding:0.4rem 0; text-align:center;">
+                        <div class="card-item-sub">Rata-rata</div>
+                        <span class="badge badge-blue">{row['Avg Qty/Bulan']} Karton</span>
+                    </div>
+                """, unsafe_allow_html=True)
+            with c3:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button(f"Tambah {row['Avg Qty/Bulan']}", key=f"reco_avg_{idx}",
+                             disabled=disabled_avg, use_container_width=True):
+                    st.session_state["item_list"].append({"Item_Name": row['Item_Name'], "Qty": row['Avg Qty/Bulan']})
                     st.rerun()
-            
-            fig1 = draw_2d_floor_plan(st.session_state["armada1_items"], armada_specs, "Visualisasi Lantai 2D (Armada 1)")
-            st.plotly_chart(fig1, use_container_width=True)
-            
-            with st.spinner("Menghitung layout 3D Armada 1..."):
-                a1_pack_res = run_3d_packing(st.session_state["armada1_items"], armada_specs)
-            if a1_pack_res["success"] and a1_pack_res.get("bin"):
-                fig1_3d = draw_3d_packing_bin(a1_pack_res["bin"], armada_specs, "Visualisasi 3D Armada 1")
-                st.plotly_chart(fig1_3d, use_container_width=True)
-            
-        with c_a2:
-            st.subheader("🚛 Armada 2")
-            v2, w2 = calc_summary(st.session_state["armada2_items"])
-            st.write(f"Vol: {v2/a2_eff_vol*100:.1f}% | Berat: {w2/a2_eff_wgt*100:.1f}%")
-            
-            for idx, iit in enumerate(st.session_state["armada2_items"]):
-                c_b, c_n = st.columns([1, 4])
-                if c_b.button("←", key=f"mv_l_{idx}"):
-                    # Move 1 to A1
-                    st.session_state["armada2_items"][idx]['Qty'] -= 1
-                    found = False
-                    for x in st.session_state["armada1_items"]:
-                        if x['Item_Name'] == iit['Item_Name']:
-                            x['Qty'] += 1
-                            found = True
-                    if not found:
-                        ni = iit.copy()
-                        ni['Qty'] = 1
-                        st.session_state["armada1_items"].append(ni)
-                    if st.session_state["armada2_items"][idx]['Qty'] == 0:
-                        st.session_state["armada2_items"].pop(idx)
-                    st.rerun()
-                c_n.write(f"{iit['Item_Name']} (x{iit['Qty']})")
-                
-            fig2 = draw_2d_floor_plan(st.session_state["armada2_items"], a2_specs, "Visualisasi Lantai 2D (Armada 2)")
-            st.plotly_chart(fig2, use_container_width=True)
-
-            with st.spinner("Menghitung layout 3D Armada 2..."):
-                a2_pack_res = run_3d_packing(st.session_state["armada2_items"], a2_specs)
-            if a2_pack_res["success"] and a2_pack_res.get("bin"):
-                fig2_3d = draw_3d_packing_bin(a2_pack_res["bin"], a2_specs, "Visualisasi 3D Armada 2")
-                st.plotly_chart(fig2_3d, use_container_width=True)
-
-    # --- STEP 6: REKOMENDASI ITEM ---
-    if not needs_split and pct_vol < 100 and pct_wgt < 100:
-        st.header("💡 Rekomendasi Tambahan Item")
-        st.write(f"Sisa kapasitas: {eff_vol - total_vol:.2f} m³ volume | {eff_wgt - total_wgt:.2f} kg berat")
-        
-        reco_df, reco_type = get_recommendations(df_histori, df_produk, cust_info['Cust_ID'], selected_shipto, enriched_items)
-        if not reco_df.empty:
-            st.info(f"Rekomendasi berdasarkan: **{reco_type}**")
-            for idx, row in reco_df.iterrows():
-                col_n, col_d, col_b1, col_b2 = st.columns([3, 3, 2, 2])
-                col_n.write(row['Item_Name'])
-                col_d.write(f"Avg: {row['Avg Qty/Bulan']} | Vol: {row['Volume/Unit']:.4f} | Wgt: {row['Weight/Unit']:.2f}")
-                
-                # Cek jika ditambahkan apakah akan melebihi kapasitas
-                add_v = row['Volume/Unit'] * row['Avg Qty/Bulan']
-                add_w = row['Weight/Unit'] * row['Avg Qty/Bulan']
-                disabled = bool((total_vol + add_v > eff_vol) or (total_wgt + add_w > eff_wgt))
-                
-                if col_b1.button(f"+ Tambah ({row['Avg Qty/Bulan']} unit)", key=f"reco_avg_{idx}_{row['Item_Name']}", disabled=disabled):
-                    st.session_state["item_list"].append({
-                        "Item_Name": row['Item_Name'],
-                        "Qty": row['Avg Qty/Bulan']
-                    })
-                    st.rerun()
-
-                # Hitung max qty yang bisa dimasukkan
-                sisa_v = eff_vol - total_vol
-                sisa_w = eff_wgt - total_wgt
-                max_v_qty = sisa_v / row['Volume/Unit'] if row['Volume/Unit'] > 0 else float('inf')
-                max_w_qty = sisa_w / row['Weight/Unit'] if row['Weight/Unit'] > 0 else float('inf')
-                max_qty = int(min(max_v_qty, max_w_qty))
-
+            with c4:
+                st.markdown("<br>", unsafe_allow_html=True)
                 if max_qty > 0:
-                    if col_b2.button(f"+ Isi Penuh ({max_qty} unit)", key=f"reco_full_{idx}_{row['Item_Name']}"):
-                        st.session_state["item_list"].append({
-                            "Item_Name": row['Item_Name'],
-                            "Qty": max_qty
-                        })
+                    if st.button(f"Tambah {max_qty} (Penuh)", key=f"reco_full_{idx}", use_container_width=True):
+                        st.session_state["item_list"].append({"Item_Name": row['Item_Name'], "Qty": max_qty})
                         st.rerun()
                 else:
-                    col_b2.write("⚠️ Tidak Muat")
+                    st.button("⚠️ Kapasitas Penuh", key=f"reco_full_{idx}", disabled=True, use_container_width=True)
 
-    # --- STEP 7: EXPORT REPORT ---
-    st.header("7. Export Report")
-    with st.expander("📊 Download Report"):
-        with st.form("export_form"):
-            rep_nama = st.text_input("Nama Lengkap")
-            rep_jabatan = st.text_input("Jabatan")
+            st.markdown("<hr class='section-divider'>", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════
+# STEP 7 — EXPORT REPORT
+# ══════════════════════════════════════════════════════════════
+st.markdown("""<div class="step-section"><h4>Step 7 · Export Report</h4>
+    <span>Generate laporan Excel untuk arsip dan dokumentasi pengiriman.</span></div>""", unsafe_allow_html=True)
+
+with st.expander("📋 Konfigurasi & Generate Report", expanded=False):
+    with st.form("export_form"):
+        st.markdown("<p style='color:#64748b; margin-bottom:1rem;'>Isi detail laporan sebelum men-download.</p>", unsafe_allow_html=True)
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            rep_nama    = st.text_input("Nama Lengkap", placeholder="Contoh: Budi Santoso")
+            rep_jabatan = st.text_input("Jabatan", placeholder="Contoh: Sales Supervisor")
+        with col_f2:
             rep_comp = st.text_input("Company", value=selected_company)
-            
-            sub_rep = st.form_submit_button("✅ Generate & Download Report")
-            if sub_rep:
-                if not rep_nama or not rep_jabatan:
-                    st.error("Nama Lengkap dan Jabatan harus diisi.")
-                else:
-                    if st.session_state["show_split"]:
-                        v1, w1 = calc_summary(st.session_state["armada1_items"])
-                        v2, w2 = calc_summary(st.session_state["armada2_items"])
-                        p_v1, p_w1 = v1/eff_vol*100, w1/eff_wgt*100
-                        p_v2, p_w2 = v2/a2_eff_vol*100, w2/a2_eff_wgt*100
-                        a2_type = st.session_state["armada2_type"]
-                        stat = "Split 2 Armada"
-                        i1 = st.session_state["armada1_items"]
-                        i2 = st.session_state["armada2_items"]
-                    else:
-                        p_v1, p_w1 = pct_vol, pct_wgt
-                        p_v2, p_w2 = 0, 0
-                        a2_type = None
-                        stat = "Muat" if (pct_vol <= 100 and pct_wgt <= 100) else "Tidak Muat"
-                        i1 = enriched_items
-                        i2 = []
 
-                    try:
-                        reco_df, _ = get_recommendations(df_histori, df_produk, cust_info['Cust_ID'], selected_shipto, enriched_items)
-                    except:
-                        reco_df = pd.DataFrame()
+        st.write("")
+        sub_rep = st.form_submit_button("✅ Generate & Archive Report", use_container_width=True)
+        if sub_rep:
+            if not rep_nama or not rep_jabatan:
+                st.error("Nama Lengkap dan Jabatan wajib diisi.")
+            else:
+                stat = "Muat" if not needs_split else "Tidak Muat"
+                try:
+                    reco_df_export, _ = get_recommendations(df_histori, df_produk, rep_comp,
+                                                            cust_info['Cust_ID'], selected_shipto, enriched_items)
+                except:
+                    reco_df_export = pd.DataFrame()
 
-                    excel_bytes = generate_excel_report(
-                        rep_nama, rep_jabatan, rep_comp, cust_info,
-                        selected_armada, a2_type,
-                        p_v1, p_w1, p_v2, p_w2, stat,
-                        i1, i2, reco_df
-                    )
-                    
-                    filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{rep_comp.replace(' ', '')}_{rep_nama.replace(' ', '')}.xlsx"
-                    st.session_state["report_bytes"] = excel_bytes
-                    st.session_state["report_filename"] = filename
-                    
-                    # Upload to GitHub
-                    upload_file_to_github(f"history/{filename}", excel_bytes, f"Added report {filename}")
-                    
-                    # Append Log
-                    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    append_report_log(rep_nama, rep_jabatan, rep_comp, filename, ts, selected_armada, a2_type or "-", p_v1, p_w1, p_v2, p_w2)
+                excel_bytes = generate_excel_report(
+                    rep_nama, rep_jabatan, rep_comp, cust_info,
+                    selected_armada, None,
+                    pct_vol, pct_wgt, 0, 0, stat,
+                    enriched_items, [], reco_df_export
+                )
+                filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{rep_comp.replace(' ','')}_{rep_nama.replace(' ','')}.xlsx"
+                st.session_state["report_bytes"]    = excel_bytes
+                st.session_state["report_filename"] = filename
 
-                    st.success("Report berhasil digenerate dan dikatalogkan! Silakan klik tombol di bawah untuk mendownload.")
+                upload_file_to_github(f"history/{filename}", excel_bytes, f"Added report {filename}")
+                append_report_log(rep_nama, rep_jabatan, rep_comp, filename,
+                                  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                  selected_armada, "-", pct_vol, pct_wgt, 0, 0)
+                st.success("✅ Report berhasil digenerate dan diarsipkan.")
 
-        if "report_bytes" in st.session_state:
-            st.download_button(
-                label="📥 Download Excel",
-                data=st.session_state["report_bytes"],
-                file_name=st.session_state["report_filename"],
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-else:
-    st.info("Tambahkan barang untuk melihat kalkulasi.")
+if "report_bytes" in st.session_state:
+    st.download_button(
+        label="📥 Download Report Excel",
+        data=st.session_state["report_bytes"],
+        file_name=st.session_state["report_filename"],
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )

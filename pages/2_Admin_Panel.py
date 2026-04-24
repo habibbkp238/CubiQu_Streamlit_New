@@ -1,23 +1,44 @@
 import streamlit as st
+import os
 import pandas as pd
 import plotly.express as px
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
-
 from utils.github_utils import read_file_from_github, upload_file_to_github
 
-st.set_page_config(page_title="Admin Panel", page_icon="⚙️", layout="wide")
+st.set_page_config(page_title="Admin Panel – CubiQu", page_icon="⚙️", layout="wide")
+
+def load_css():
+    if os.path.exists("utils/style.css"):
+        with open("utils/style.css") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+load_css()
 
 if not st.session_state.get("logged_in", False):
-    st.warning("Silakan login dari halaman utama.")
+    st.warning("⚠️ Silakan login dari halaman utama.")
     st.stop()
+
+with st.sidebar:
+    if os.path.exists("logo.png"):
+        st.image("logo.png", use_container_width=True)
+    st.markdown(f"""
+        <div class="sidebar-user-card">
+            <div class="user-name">👤 {st.session_state['username']}</div>
+            <div class="user-role">{st.session_state['role'].capitalize()}</div>
+        </div>
+    """, unsafe_allow_html=True)
 
 if st.session_state.get("role") != "admin":
-    st.error("Akses Ditolak. Halaman ini hanya untuk Admin.")
+    st.error("🚫 Akses Ditolak. Halaman ini hanya untuk Admin.")
     st.stop()
 
-st.title("⚙️ Admin Panel - Master Data")
+st.markdown("""
+    <div class="page-hero">
+        <h1>⚙️ Admin Panel</h1>
+        <p>Kelola master data, histori penjualan, dan log laporan.</p>
+    </div>
+""", unsafe_allow_html=True)
 
 # --- Utilities ---
 def save_master_data(df, filepath, success_msg):
@@ -32,6 +53,12 @@ def render_master_editor(filepath, title, expected_cols):
     if df.empty:
         st.warning(f"Data {filepath} kosong atau gagal dimuat.")
     else:
+        # Pastikan kolom sesuai dengan expected_cols untuk tampilan editor
+        for col in expected_cols:
+            if col not in df.columns:
+                df[col] = None
+        df = df[expected_cols]
+        
         edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, key=f"editor_{filepath}")
         col1, col2 = st.columns([2, 8])
         with col1:
@@ -90,6 +117,12 @@ with tabs[3]:
             three_months_ago = pd.Timestamp.now() - pd.DateOffset(months=3)
             recent_hist = df_histori[df_histori['Date'] >= three_months_ago]
             
+            if 'Company' in recent_hist.columns:
+                all_comps = ["All"] + recent_hist['Company'].unique().tolist()
+                sel_comp_admin = st.selectbox("Filter Chart by Company", all_comps)
+                if sel_comp_admin != "All":
+                    recent_hist = recent_hist[recent_hist['Company'] == sel_comp_admin]
+            
             if not recent_hist.empty:
                 top_10 = recent_hist.groupby('Item_Name')['Qty'].sum().nlargest(10).reset_index()
                 fig = px.bar(top_10, x='Item_Name', y='Qty', title="Top 10 SKU Terlaris (3 Bulan Terakhir)", text_auto=True)
@@ -99,7 +132,7 @@ with tabs[3]:
         except Exception as e:
             st.warning("Gagal membuat chart, pastikan format Date sesuai (YYYY-MM-DD).")
             
-    render_master_editor("data/histori_penjualan.xlsx", "Data Histori Penjualan", ["Date", "Cust_ID", "Ship_To_Location", "Item_Name", "Qty"])
+    render_master_editor("data/histori_penjualan.xlsx", "Data Histori Penjualan", ["Company", "Date", "Cust_ID", "Item_Name", "Shipto_Name", "Qty"])
 
 with tabs[4]:
     st.subheader("History Report Log")
