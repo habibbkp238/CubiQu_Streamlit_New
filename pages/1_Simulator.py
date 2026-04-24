@@ -9,6 +9,15 @@ from utils.recommendation import get_recommendations
 from utils.report_generator import generate_excel_report, generate_download_template
 
 # ── Callbacks ──────────────────────────────────────────────────
+def get_col_name(df, possible_names):
+    for name in possible_names:
+        if name in df.columns:
+            return name
+    for col in df.columns:
+        if col.strip().lower() in [n.lower() for n in possible_names]:
+            return col
+    return possible_names[0]
+
 def update_item_qty(item_name, add_qty):
     for j, item in enumerate(st.session_state["item_list"]):
         if item["Item_Name"] == item_name:
@@ -105,11 +114,12 @@ with col2:
         st.session_state["selected_shipto"]    = None
 
 shipto_by_cust = cust_by_comp[cust_by_comp['Cust_Name'] == selected_cust_name]
-shiptos        = shipto_by_cust['Ship_To_Location'].unique().tolist()
+shipto_col = get_col_name(shipto_by_cust, ['Ship_to_Name', 'Ship_To_Location', 'Shipto_Name'])
+shiptos        = shipto_by_cust[shipto_col].unique().tolist()
 
 with col3:
     idx_shipto = shiptos.index(st.session_state["selected_shipto"]) if st.session_state["selected_shipto"] in shiptos else 0
-    selected_shipto = st.selectbox("Ship-To Location", options=shiptos, index=idx_shipto)
+    selected_shipto = st.selectbox("Ship-To Name", options=shiptos, index=idx_shipto)
     if selected_shipto != st.session_state["selected_shipto"]:
         st.session_state["selected_shipto"]  = selected_shipto
         st.session_state["selected_armada"] = None
@@ -118,7 +128,7 @@ if not (selected_company and selected_cust_name and selected_shipto):
     st.info("Pilih pelanggan terlebih dahulu untuk melanjutkan.")
     st.stop()
 
-cust_info = shipto_by_cust[shipto_by_cust['Ship_To_Location'] == selected_shipto].iloc[0]
+cust_info = shipto_by_cust[shipto_by_cust[shipto_col] == selected_shipto].iloc[0]
 st.session_state["selected_cust_id"] = cust_info['Cust_ID']
 max_armada = cust_info['Max_Armada']
 

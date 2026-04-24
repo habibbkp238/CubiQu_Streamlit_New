@@ -106,7 +106,7 @@ with tabs[1]:
     render_master_editor("data/master_armada.xlsx", "Master Armada", ["Jenis_Armada", "Length_cm", "Width_cm", "Height_cm", "Max_Volume_m3", "Max_Tonase_Kg", "Safety_Factor", "is_active"])
 
 with tabs[2]:
-    render_master_editor("data/master_customer_armada.xlsx", "Master Customer x Armada", ["Cust_ID", "Cust_Name", "Ship_To_Location", "Company", "Max_Armada", "is_active"])
+    render_master_editor("data/master_customer_armada.xlsx", "Master Customer x Armada", ["Cust_ID", "Cust_Name", "Ship_to_Name", "Company", "Max_Armada", "is_active"])
 
 with tabs[3]:
     st.subheader("Histori Penjualan")
